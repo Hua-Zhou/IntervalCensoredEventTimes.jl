@@ -1,0 +1,6 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+IntervalCensoredEventTimes = "31864dbe-68c6-4447-a141-e82f73c554be"
+
+[compat]
+Documenter = "~0.24"

@@ -1,0 +1,3 @@
+# IntervalCensoredEventTimes
+
+*Documentation goes here.*

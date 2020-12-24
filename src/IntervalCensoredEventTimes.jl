@@ -1,0 +1,3 @@
+module IntervalCensoredEventTimes
+
+end # module
