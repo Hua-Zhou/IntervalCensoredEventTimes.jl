@@ -45,6 +45,7 @@ struct IntervalCensoredModel{T <: BlasReal} <: MathProgBase.AbstractNLPEvaluator
     # Hessian
     Hλ₀λ₀      :: Matrix{T}
     Hββ        :: Matrix{T}
+    Hλ₀β       :: Matrix{T}
     Vββ        :: Matrix{T}
     glmwt      :: Vector{T}
     # logical
@@ -68,6 +69,7 @@ function IntervalCensoredModel(
     ts   = unique!(sort!([L; R])) # last time can be infinity
     iszero(ts[1])  && popfirst!(ts)
     isinf(ts[end]) && pop!(ts)
+    m = length(ts)
     # Lidx[i] = 0 if L[i] = 0
     Lidx = map(x -> isnothing(x) ? 0 : x, indexin(L, ts)) 
     # Ridx[i] = length(ts) + 1 if R[i] = Inf
@@ -95,14 +97,15 @@ function IntervalCensoredModel(
     η        = Vector{T}(undef, n)
     expη     = Vector{T}(undef, n)
     β        = Vector{T}(undef, p)
-    Λ₀       = Vector{T}(undef, length(ts))
-    λ₀       = Vector{T}(undef, length(ts))
-    S₀       = Vector{T}(undef, length(ts))
-    ∇λ₀      = Vector{T}(undef, length(ts))
+    Λ₀       = Vector{T}(undef, m)
+    λ₀       = Vector{T}(undef, m)
+    S₀       = Vector{T}(undef, m)
+    ∇λ₀      = Vector{T}(undef, m)
     ∇β       = Vector{T}(undef, p)
     res      = Vector{T}(undef, n)
-    Hλ₀λ₀    = Matrix{T}(undef, length(ts), length(ts))
+    Hλ₀λ₀    = Matrix{T}(undef, m, m)
     Hββ      = Matrix{T}(undef, p, p)
+    Hλ₀β     = Matrix{T}(undef, m, p)
     Vββ      = Matrix{T}(undef, p, p)
     glmwt    = Vector{T}(undef, n)
     isfitted = [false]
@@ -112,7 +115,7 @@ function IntervalCensoredModel(
     IntervalCensoredModel{T}(
         Z, L, R, C, 
         β, Λ₀, λ₀, S₀, ts, Lidx, Ridx, η, expη,
-        ∇λ₀, ∇β, res, Hλ₀λ₀, Hββ, Vββ, glmwt, isfitted,
+        ∇λ₀, ∇β, res, Hλ₀λ₀, Hββ, Hλ₀β, Vββ, glmwt, isfitted,
         storage_n, storage_np)
 end
 

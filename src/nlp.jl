@@ -12,25 +12,32 @@ function loglikelihood!(
     # log-likelihood
     logl = zero(T)
     needgrad && fill!(icm.∇λ₀, 0)
-    needhess && fill!(icm.Hλ₀λ₀, 0)
+    if needhess; fill!(icm.Hλ₀λ₀, 0); fill!(icm.Hλ₀β, 0); end
     @inbounds for i in 1:n
         if icm.C[i] == :left_censored
-            s = exp(-icm.Λ₀[icm.Ridx[i]] * icm.expη[i])
+            s = exp(- icm.Λ₀[icm.Ridx[i]] * icm.expη[i])
             logl += log1p(-s)
             if needgrad
                 g = icm.expη[i] / (inv(s) - 1)
                 for j in 1:icm.Ridx[i]
                     icm.∇λ₀[j] += g
                 end
-                icm.res[i] = g * icm.Λ₀[icm.Ridx[i]]
+                icm.res[i] = icm.Λ₀[icm.Ridx[i]] * g
             end
             if needhess
-                h = abs2(icm.expη[i]) / (s + inv(s) - 2)
+                # Hλ₀λ₀
+                h = abs2(icm.expη[i]) / (2 - s - inv(s))
                 for j in 1:icm.Ridx[i], k in 1:j
-                    icm.Hλ₀λ₀[k, j] += h
+                    icm.Hλ₀λ₀[k, j] -= h
                 end
+                # Hββ
                 g = icm.Λ₀[icm.Ridx[i]] * icm.expη[i] / (inv(s) - 1)
-                icm.glmwt[i] = - g * (1 - g * icm.expη[i])
+                icm.glmwt[i] = - g * (1 - g * inv(s))
+                # Hλ₀β
+                g = icm.expη[i] / (inv(s) - 1) + icm.Λ₀[icm.Ridx[i]] * h
+                for k in 1:p, j in 1:icm.Ridx[i]
+                    icm.Hλ₀β[j, k] -= g * icm.Z[i, k]
+                end
             end
         elseif icm.C[i] == :right_censored
             l     = - icm.Λ₀[icm.Lidx[i]] * icm.expη[i]
@@ -43,28 +50,44 @@ function loglikelihood!(
             end
             if needhess
                 icm.glmwt[i] = -l
+                for k in 1:p, j in 1:icm.Lidx[i]
+                    icm.Hλ₀β[j, k] += icm.expη[i] * icm.Z[i, k]
+                end
             end
         elseif icm.C[i] == :interval_censored
-            l     = -icm.Λ₀[icm.Lidx[i]] * icm.expη[i]
-            s     = exp((icm.Λ₀[icm.Lidx[i]] - icm.Λ₀[icm.Ridx[i]]) * icm.expη[i])
+            ΔΛ₀  = icm.Λ₀[icm.Ridx[i]] - icm.Λ₀[icm.Lidx[i]]
+            l     = - icm.Λ₀[icm.Lidx[i]] * icm.expη[i]
+            s     = exp(- ΔΛ₀ * icm.expη[i])
             logl += l + log1p(-s)
             if needgrad
                 for j in 1:icm.Lidx[i]
                     icm.∇λ₀[j] -= icm.expη[i]
                 end
                 g = icm.expη[i] / (inv(s) - 1)
-                for j in (icm.Lidx[i]+1):icm.Ridx[i]
+                for j in (icm.Lidx[i] + 1):icm.Ridx[i]
                     icm.∇λ₀[j] += g
                 end
-                icm.res[i] = l + (icm.Λ₀[icm.Ridx[i]] - icm.Λ₀[icm.Lidx[i]]) * g
+                icm.res[i] = l + ΔΛ₀ * g
             end
             if needhess
-                h = abs2(icm.expη[i]) / (s + inv(s) - 2)
+                # Hλ₀λ₀
+                h = abs2(icm.expη[i]) / (2 - s - inv(s))
                 for j in (icm.Lidx[i]+1):icm.Ridx[i], k in (icm.Lidx[i]+1):j
-                    icm.Hλ₀λ₀[k, j] += h
+                    icm.Hλ₀λ₀[k, j] -= h
                 end
-                g = (icm.Λ₀[icm.Ridx[i]] - icm.Λ₀[icm.Lidx[i]]) * icm.expη[i] / (inv(s) - 1)
-                icm.glmwt[i] = icm.Λ₀[icm.Lidx[i]] * icm.expη[i] - g * (1 - g * icm.expη[i])
+                # Hββ
+                g = ΔΛ₀ * icm.expη[i] / (inv(s) - 1)
+                icm.glmwt[i] = icm.Λ₀[icm.Lidx[i]] * icm.expη[i] - g * (1 - g * inv(s))
+                # Hλ₀β
+                for k in 1:p
+                    for j in 1:icm.Lidx[i]
+                        icm.Hλ₀β[j, k] += icm.expη[i] * icm.Z[i, k]
+                    end
+                    g = - icm.expη[i] / (inv(s) - 1) - ΔΛ₀ * h
+                    for j in (icm.Lidx[i] + 1):icm.Ridx[i]
+                        icm.Hλ₀β[j, k] += g * icm.Z[i, k]
+                    end
+                end
             end
         elseif icm.C[i] == :exact_time
             logl += log(icm.λ₀[icm.Lidx[i]]) + icm.η[i] - icm.Λ₀[icm.Lidx[i]] * icm.expη[i]
@@ -77,6 +100,9 @@ function loglikelihood!(
             end
             if needhess
                 icm.glmwt[i] = icm.Λ₀[icm.Lidx[i]] * icm.expη[i]
+                for k in 1:p, j in 1:icm.Lidx[i]
+                    icm.Hλ₀β[j, k] += icm.expη[i] * icm.Z[i, k]
+                end
             end
         end
     end
@@ -256,17 +282,12 @@ MathProgBase.jac_structure(icm::IntervalCensoredModel) = Int[], Int[]
 MathProgBase.eval_jac_g(icm::IntervalCensoredModel, J, par) = nothing
 
 function MathProgBase.hesslag_structure(icm::IntervalCensoredModel)
-    # our Hessian has two dense diagonal blocks: [1:m, 1:m], [m+1:m+p, m+1:m+p]
+    # our Hessian is a dense (m+p)-by-(m+p) matrix
     m, p = length(icm.ts), size(icm.Z, 2)
-    arr1 = Vector{Int}(undef, ◺(m) + ◺(p))
-    arr2 = Vector{Int}(undef, ◺(m) + ◺(p))
+    arr1 = Vector{Int}(undef, ◺(m + p))
+    arr2 = Vector{Int}(undef, ◺(m + p))
     idx  = 1
-    @inbounds for j in 1:m, i in 1:j
-        arr1[idx] = i
-        arr2[idx] = j
-        idx      += 1
-    end
-    @inbounds for j in (m+1):(m+p), i in (m+1):j
+    @inbounds for j in 1:(m + p), i in 1:j
         arr1[idx] = i
         arr2[idx] = j
         idx      += 1
@@ -291,10 +312,16 @@ function MathProgBase.eval_hesslag(
         H[idx] = -icm.Hλ₀λ₀[i, j]
         idx   += 1
     end
-    # Hββ
-    @inbounds for j in 1:p, i in 1:j
-        H[idx] = -icm.Hββ[i, j]
-        idx   += 1
+    # Hλ₀β and Hββ
+    @inbounds for j in 1:p
+        for i in 1:m
+            H[idx] = -icm.Hλ₀β[i, j]
+            idx   += 1
+        end
+        for i in 1:j
+            H[idx] = -icm.Hββ[i, j]
+            idx   += 1
+        end
     end
     lmul!(σ, H)
 end
