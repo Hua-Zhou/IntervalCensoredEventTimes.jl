@@ -202,7 +202,15 @@ function fit!(
     optimpar_to_modelpar!(icm, MathProgBase.getsolution(optm))
     icm.S₀ .= exp.(- icm.Λ₀)
     loglikelihood!(icm, true, true)
-    icm.Vββ .= inv(icm.Hββ)
+    # inference for β
+    idx = icm.λ₀ .> 0
+    Hλ₀λ₀_eval, Hλ₀λ₀_evec = eigen(Symmetric(icm.Hλ₀λ₀[idx, idx]))
+    for (i, e) in enumerate(Hλ₀λ₀_eval)
+        Hλ₀λ₀_eval[i] = e < 1e-6 ? 0 : inv(e)
+    end
+    icm.Vββ .= inv(Symmetric(icm.Hββ - 
+        transpose(icm.Hλ₀β[idx, :]) * (Hλ₀λ₀_evec * 
+        lmul!(Diagonal(Hλ₀λ₀_eval), transpose(Hλ₀λ₀_evec) * icm.Hλ₀β[idx, :]))))
     icm.isfitted[1] = true
     icm
 end
