@@ -1,7 +1,7 @@
 """
     loglikelihood!(m::IntervalCensoredModel)
 
-This function uses the parameter values `m.β`, `m.η`, `m.expη`, `m.λ₀`, `m.Λ₀`.
+This function uses the parameter values `m.η`, `m.expη`, `m.λ₀`, `m.Λ₀`.
 """
 function loglikelihood!(
     icm      :: IntervalCensoredModel{T},
@@ -22,7 +22,7 @@ function loglikelihood!(
                 for j in 1:icm.Ridx[i]
                     icm.∇λ₀[j] += g
                 end
-                icm.res[i] = icm.Λ₀[icm.Ridx[i]] * g
+                icm.βres[i] = icm.Λ₀[icm.Ridx[i]] * g
             end
             if needhess
                 # Hλ₀λ₀
@@ -46,7 +46,7 @@ function loglikelihood!(
                 for j in 1:icm.Lidx[i]
                     icm.∇λ₀[j] -= icm.expη[i]
                 end
-                icm.res[i] = l
+                icm.βres[i] = l
             end
             if needhess
                 icm.glmwt[i] = -l
@@ -67,7 +67,7 @@ function loglikelihood!(
                 for j in (icm.Lidx[i] + 1):icm.Ridx[i]
                     icm.∇λ₀[j] += g
                 end
-                icm.res[i] = l + ΔΛ₀ * g
+                icm.βres[i] = l + ΔΛ₀ * g
             end
             if needhess
                 # Hλ₀λ₀
@@ -96,7 +96,7 @@ function loglikelihood!(
                     icm.∇λ₀[j] -= icm.expη[j]
                 end
                 icm.∇λ₀[icm.Lidx[i]] += inv(icm.λ₀[icm.Lidx[i]])
-                icm.res[i] = 1 - icm.λ₀[icm.Lidx[i]] * icm.expη[i]
+                icm.βres[i] = 1 - icm.λ₀[icm.Lidx[i]] * icm.expη[i]
             end
             if needhess
                 icm.glmwt[i] = icm.Λ₀[icm.Lidx[i]] * icm.expη[i]
@@ -106,7 +106,7 @@ function loglikelihood!(
             end
         end
     end
-    needgrad && mul!(icm.∇β, transpose(icm.Z), icm.res)
+    needgrad && mul!(icm.∇β, transpose(icm.Z), icm.βres)
     if needhess
         copytri!(icm.Hλ₀λ₀, 'U')
         for (i, w) in enumerate(icm.glmwt)
@@ -119,19 +119,41 @@ function loglikelihood!(
     logl
 end
 
-function initialize!(icm::IntervalCensoredModel)
+"""
+    initialize_uniform!(icm::IntervalCensoredModel)
+
+Set `icm.λ₀`, `icm.Λ₀` and `icm.S₀` according to a discrete uniform distribution 
+on the observed examination time points `0 < s1 < ... < sm < ∞`. `icm.β` are 
+set to  zero; `icm.η` and `icm.expη` are set accordingly.
+"""
+function initialize_uniform!(icm::IntervalCensoredModel{T}) where T <: Real
+    m    = length(icm.ts)
+    invm = inv(m)
+    # survival function
+    icm.S₀[end] = 0
+    @inbounds for i in m-1:-1:1
+        icm.S₀[i] = icm.S₀[i+1] + invm
+    end
+    # hazard function 
+    icm.λ₀[1] = invm
+    @inbounds for i in 2:m
+        icm.λ₀[i] = invm / icm.S₀[i - 1]
+    end
+    # cumulative hazard
+    cumsum!(icm.Λ₀, icm.λ₀)    
     # β, η, expη
     fill!(icm.β, 0)
-    mul!(icm.η, icm.Z, icm.β)
-    icm.expη .= exp.(icm.η)
-    # Λ₀, λ₀
-    npmle!(icm)
+    fill!(icm.η, 0)
+    fill!(icm.expη, 1)
+    icm
 end
 
 """
-    npmle(m::IntervalCensoredModel)
+    npmle!(icm::IntervalCensoredModel)
 
-Non-parametric MLE (NPMLE) of survival function `S(t)` using the MM algorithm.
+Non-parametric MLE (NPMLE) of survival function `S(t)` using the MM algorithm. 
+`icm.λ₀` and `icm.Λ₀` are set according to NPMLE of `icm.S₀`. `icm.β` are set to 
+zero; `icm.η` and `icm.expη` are set accordingly.
 """
 function npmle!(
     icm     :: IntervalCensoredModel{T};
@@ -175,14 +197,18 @@ function npmle!(
     end
     # cumulative hazard
     cumsum!(icm.Λ₀, icm.λ₀)
+    # set β to 0
+    fill!(icm.β, 0)
+    fill!(icm.η, 0)
+    fill!(icm.expη, 1)
     # return
     icm
 end
 
 function fit!(
     icm      :: IntervalCensoredModel,
-    solver    = Ipopt.IpoptSolver(print_level=3);
-    init     :: IntervalCensoredModel = initialize!(icm),
+    solver    = Ipopt.IpoptSolver(print_level=0);
+    init     :: IntervalCensoredModel = icm,
     verbose  :: Bool = true
     )
     # set up NLP optimization problem

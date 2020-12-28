@@ -1,6 +1,6 @@
 module PkgTest
 using IntervalCensoredEventTimes
-using CSV, DataFrames, Ipopt, NLopt, Test, UnicodePlots
+using CSV, DataFrames, Ipopt, NLopt, SparseArrays, Random, Test, UnicodePlots
 
 @testset "Breast Cancer" begin
 bcfile = joinpath(@__DIR__, "..", "data", "breast_cancer.csv")
@@ -12,10 +12,10 @@ icm = IntervalCensoredModel(reshape(g, length(g), 1), L, R)
 display([g icm.L icm.R icm.C]); println()
 @info "NPMLE of survival functin S(t)"
 npmle!(icm)
-plt = lineplot([0; icm.ts], [1.0; icm.S₀], xlabel = "Time by Months", ylabel = "Survival Functions")
+plt = lineplot([0; icm.ts], [1; icm.S₀], xlabel = "Time by Months", ylabel = "Survival Functions")
 display(plt); println()
 @info "Log-likelihood at starting point"
-initialize!(icm)
+initialize_uniform!(icm)
 display(DataFrame(t=icm.ts, St=icm.S₀, Λ₀t=icm.Λ₀, λ₀t=icm.λ₀)); println()
 println("logl = $(loglikelihood!(icm))")
 @info "MLE of PH model"
@@ -26,11 +26,16 @@ solver = Ipopt.IpoptSolver(print_level=5)
 # solver = NLopt.NLoptSolver(algorithm = :LD_MMA)
 # solver = NLopt.NLoptSolver(algorithm = :LD_SLSQP)
 # solver = NLopt.NLoptSolver(algorithm = :LD_LBFGS)
-fit!(icm, solver)
+fit!(icm, solver, init = initialize_uniform!(icm))
 display(icm)
-# display(loglikelihood!(icm)); println()
-# display([icm.ts icm.λ₀]); println()
-# display(icm.β); println()
+@info "IHT"
+Random.seed!(123)
+X = randn(length(icm.C), 100)
+k = 10
+icsm = IntervalCensoredSparseModel(icm, X, k)
+iht!(icsm, maxiter=5, verbose=true, debiasing=true, printfreq=1)
+βx = sparsevec(icsm.βx)
+display(DataFrame(j=βx.nzind, βj=βx.nzval)); println()
 end
 
 end
