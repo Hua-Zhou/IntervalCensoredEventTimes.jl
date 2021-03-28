@@ -279,6 +279,9 @@ function optimpar_to_modelpar!(
     )
     m, p = length(icm.ts), size(icm.Z, 2)
     copyto!(icm.λ₀, 1, par, 1, m)
+    for (i, λi) in enumerate(icm.λ₀)
+        (icm.λ₀[i] < 0) && (icm.λ₀[i] = 0)
+    end
     cumsum!(icm.Λ₀, icm.λ₀)
     copyto!(icm.β, 1, par, m + 1, p)
     mul!(icm.η, icm.Z, icm.β)
