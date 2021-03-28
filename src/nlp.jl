@@ -60,8 +60,9 @@ function loglikelihood!(
             s     = exp(- ΔΛ₀ * icm.expη[i])
             logl += l + log1p(-s)
             if needgrad
+                g = icm.expη[i]
                 for j in 1:icm.Lidx[i]
-                    icm.∇λ₀[j] -= icm.expη[i]
+                    icm.∇λ₀[j] -= g
                 end
                 g = icm.expη[i] / (inv(s) - 1)
                 for j in (icm.Lidx[i] + 1):icm.Ridx[i]
@@ -90,17 +91,23 @@ function loglikelihood!(
                 end
             end
         elseif icm.C[i] == :exact_time
-            logl += log(icm.λ₀[icm.Lidx[i]]) + icm.η[i] - icm.Λ₀[icm.Lidx[i]] * icm.expη[i]
+            Tidx  = icm.Lidx[i]
+            logl += log(icm.λ₀[Tidx]) + icm.η[i] - icm.Λ₀[Tidx] * icm.expη[i]
             if needgrad
-                for j in 1:icm.Lidx[i]
-                    icm.∇λ₀[j] -= icm.expη[j]
+                g = icm.expη[i]
+                for j in 1:Tidx
+                    icm.∇λ₀[j] -= g
                 end
-                icm.∇λ₀[icm.Lidx[i]] += inv(icm.λ₀[icm.Lidx[i]])
-                icm.βres[i] = 1 - icm.λ₀[icm.Lidx[i]] * icm.expη[i]
+                icm.∇λ₀[Tidx] += inv(icm.λ₀[Tidx])
+                icm.βres[i] = 1 - icm.Λ₀[Tidx] * icm.expη[i]
             end
             if needhess
-                icm.glmwt[i] = icm.Λ₀[icm.Lidx[i]] * icm.expη[i]
-                for k in 1:p, j in 1:icm.Lidx[i]
+                # Hλ₀λ₀
+                icm.Hλ₀λ₀[Tidx, Tidx] += abs2(inv(icm.λ₀[Tidx]))
+                # Hββ
+                icm.glmwt[i] = icm.Λ₀[Tidx] * icm.expη[i]
+                # Hλ₀β
+                for k in 1:p, j in 1:Tidx
                     icm.Hλ₀β[j, k] += icm.expη[i] * icm.Z[i, k]
                 end
             end
@@ -229,14 +236,19 @@ function fit!(
     icm.S₀ .= exp.(- icm.Λ₀)
     loglikelihood!(icm, true, true)
     # inference for β
-    idx = icm.λ₀ .> 0
+    idx = icm.λ₀ .> 1e-6
     Hλ₀λ₀_eval, Hλ₀λ₀_evec = eigen(Symmetric(icm.Hλ₀λ₀[idx, idx]))
     for (i, e) in enumerate(Hλ₀λ₀_eval)
-        Hλ₀λ₀_eval[i] = e < 1e-6 ? 0 : inv(e)
+        Hλ₀λ₀_eval[i] = e < 0 ? 0 : inv(e)
     end
-    icm.Vββ .= inv(Symmetric(icm.Hββ - 
+    icm.Vββ .= icm.Hββ - 
         transpose(icm.Hλ₀β[idx, :]) * (Hλ₀λ₀_evec * 
-        lmul!(Diagonal(Hλ₀λ₀_eval), transpose(Hλ₀λ₀_evec) * icm.Hλ₀β[idx, :]))))
+        lmul!(Diagonal(Hλ₀λ₀_eval), transpose(Hλ₀λ₀_evec) * icm.Hλ₀β[idx, :]))
+    Vββ_eval, Vββ_evec = eigen(Symmetric(icm.Vββ))
+    for (i, e) in enumerate(Vββ_eval)
+        Vββ_eval[i] = e < 0 ? 0 : inv(e)
+    end
+    icm.Vββ .= Vββ_evec * Diagonal(Vββ_eval) * transpose(Vββ_evec)
     icm.isfitted[1] = true
     icm
 end
