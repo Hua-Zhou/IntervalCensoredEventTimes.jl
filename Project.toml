@@ -1,7 +1,7 @@
 name = "IntervalCensoredEventTimes"
 uuid = "31864dbe-68c6-4447-a141-e82f73c554be"
 authors = ["Hua Zhou <huazhou@ucla.edu>"]
-version = "0.1.1"
+version = "0.1.0"
 
 [deps]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
