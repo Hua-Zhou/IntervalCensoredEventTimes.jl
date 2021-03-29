@@ -12,7 +12,7 @@ R = vec(read(file, "R"))
 close(file)
 
 # form a data set with with p=30 for benchmark
-Zbm = [ones(size(Z, 1)) Z[:, [1, 50, 100, 150, 200]] Z[:, 2:25]]
+Zbm = [ones(size(Z, 1)) Z[:, [1, 50, 100, 150, 200]] Z[:, 101:124]]
 βbm = [0; βtrue[[1, 50, 100, 150, 200]]; zeros(24)]
 @show βbm
 # form model object
@@ -27,11 +27,13 @@ display(icm); println()
 # derivcheck_type (1, forward; 2, central)
 # maxit
 # solver = KNITRO.KnitroSolver(outlev = 3, derivcheck = 3, derivcheck_tol = 1e-4, maxit = 10)
-solver = KNITRO.KnitroSolver(outlev = 3, hessopt = 2)
+solver = KNITRO.KnitroSolver(outlev = 0)
+@time fit!(icm, solver, init=initialize_uniform!(icm))
+display(icm); println()
 # IPOPT options:
 # hessian_approximation = "limited-memory"
 # watchdog_shortened_iter_trigger = 3
-# solver = Ipopt.IpoptSolver(print_level = 5, hessian_approximation = "limited-memory", tol=1e-3)
-fit!(icm, solver, init=initialize_uniform!(icm))
+solver = Ipopt.IpoptSolver(print_level = 0, tol = 1e-4)
+@time fit!(icm, solver, init=initialize_uniform!(icm))
 display(icm); println()
 end
