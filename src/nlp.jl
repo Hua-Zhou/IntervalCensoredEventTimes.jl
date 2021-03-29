@@ -214,7 +214,7 @@ end
 
 function fit!(
     icm      :: IntervalCensoredModel,
-    solver    = Ipopt.IpoptSolver(print_level=0);
+    solver    = Ipopt.IpoptSolver(print_level=0, tol=1e-4);
     init     :: IntervalCensoredModel = icm,
     verbose  :: Bool = true
     )
