@@ -1,6 +1,6 @@
 module RuiExamples
 
-using IntervalCensoredEventTimes, Ipopt, KNITRO, MAT, Test
+using BenchmarkTools, IntervalCensoredEventTimes, Ipopt, KNITRO, MAT, Test
 
 @info "load n=200, p=1000 example data"
 datafile = "/Users/huazhou/Desktop/interval_censoring_examples/n200p1000_Identity.mat"
@@ -27,13 +27,22 @@ display(icm); println()
 # derivcheck_type (1, forward; 2, central)
 # maxit
 # solver = KNITRO.KnitroSolver(outlev = 3, derivcheck = 3, derivcheck_tol = 1e-4, maxit = 10)
-solver = KNITRO.KnitroSolver(outlev = 0)
+solver = KNITRO.KnitroSolver(outlev = 3)
 @time fit!(icm, solver, init=initialize_uniform!(icm))
 display(icm); println()
 # IPOPT options:
 # hessian_approximation = "limited-memory"
 # watchdog_shortened_iter_trigger = 3
-solver = Ipopt.IpoptSolver(print_level = 0, tol = 1e-4)
-@time fit!(icm, solver, init=initialize_uniform!(icm))
-display(icm); println()
+# solver = Ipopt.IpoptSolver(print_level = 0, tol = 1e-4)
+# @time fit!(icm, solver, init=initialize_uniform!(icm))
+# display(icm); println()
+
+# @info "Benchmark loglikelihood!"
+# initialize_uniform!(icm)
+# bm = @benchmark loglikelihood!($icm, false, false)
+# display(bm); println()
+# bm = @benchmark loglikelihood!($icm, true, false)
+# display(bm); println()
+# bm = @benchmark loglikelihood!($icm, true, true)
+# display(bm); println()
 end

@@ -17,6 +17,7 @@ UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 julia = "^1"
 
 [extras]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 KNITRO = "67920dd8-b58e-52a8-8622-53c4cffbe346"
@@ -26,4 +27,4 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["CSV", "DataFrames", "KNITRO", "MAT", "Random", "Statistics", "Test"]
+test = ["BenchmarkTools", "CSV", "DataFrames", "KNITRO", "MAT", "Random", "Statistics", "Test"]

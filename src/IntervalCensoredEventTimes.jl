@@ -25,9 +25,9 @@ IntervalCensoredModel(Z, L, R)
 """
 struct IntervalCensoredModel{T <: BlasReal} <: MathProgBase.AbstractNLPEvaluator
     # Data
-    Z          :: AbstractMatrix{T} # n-by-p covariate matrix
-    L          :: AbstractVector{T} # n vector of left ends of interval
-    R          :: AbstractVector{T} # n vector of right ends of interval
+    Z          :: Matrix{T} # n-by-p covariate matrix
+    L          :: Vector{T} # n vector of left ends of interval
+    R          :: Vector{T} # n vector of right ends of interval
     C          :: Vector{Symbol}    # n vector of censoring type
 #    A          :: IcmAlphaMatrix{T} # αij=I(Li<sj≤Ri) indicator matrix
     # parameters
@@ -55,7 +55,7 @@ struct IntervalCensoredModel{T <: BlasReal} <: MathProgBase.AbstractNLPEvaluator
     isfitted   :: Vector{Bool}
     # scrach spaces
     storage_n  :: Vector{T}
-    storage_np :: AbstractMatrix{T}
+    storage_np :: Matrix{T}
 end
 
 function IntervalCensoredModel(
