@@ -30,7 +30,8 @@ display(icm); println()
 solver = KNITRO.KnitroSolver(outlev = 3, hessopt = 2)
 # IPOPT options:
 # hessian_approximation = "limited-memory"
-# solver = Ipopt.IpoptSolver(print_level = 3, hessian_approximation = "limited-memory")
+# watchdog_shortened_iter_trigger = 3
+# solver = Ipopt.IpoptSolver(print_level = 5, hessian_approximation = "limited-memory", tol=1e-3)
 fit!(icm, solver, init=initialize_uniform!(icm))
 display(icm); println()
 end
