@@ -222,8 +222,8 @@ function fit!(
     m, p = length(icm.ts), size(icm.Z, 2)
     npar = m + p
     optm = MathProgBase.NonlinearModel(solver)
-    lb   = [fill(0.0, m); fill(-Inf, p)]
-    ub   = fill(Inf, npar)
+    lb   = fill(-Inf, npar)
+    ub   = fill( Inf, npar)
     MathProgBase.loadproblem!(optm, npar, 0, lb, ub, Float64[], Float64[], :Max, icm)
     par0 = Vector{Float64}(undef, npar)
     modelpar_to_optimpar!(par0, icm)
@@ -235,20 +235,12 @@ function fit!(
     optimpar_to_modelpar!(icm, MathProgBase.getsolution(optm))
     icm.S₀ .= exp.(- icm.Λ₀)
     loglikelihood!(icm, true, true)
-    # inference for β
-    idx = icm.λ₀ .> 1e-6
-    Hλ₀λ₀_eval, Hλ₀λ₀_evec = eigen(Symmetric(icm.Hλ₀λ₀[idx, idx]))
-    for (i, e) in enumerate(Hλ₀λ₀_eval)
-        Hλ₀λ₀_eval[i] = e < 0 ? 0 : inv(e)
+    # inference for β (this inference is WRONG. What's implemented here is purely for convenience.)
+    Hββ_eval, Hββ_evec = eigen(Symmetric(icm.Hββ))
+    for (i, e) in enumerate(Hββ_eval)
+        Hββ_eval[i] = e < 0 ? 0 : inv(e)
     end
-    icm.Vββ .= icm.Hββ - 
-        transpose(icm.Hλ₀β[idx, :]) * (Hλ₀λ₀_evec * 
-        lmul!(Diagonal(Hλ₀λ₀_eval), transpose(Hλ₀λ₀_evec) * icm.Hλ₀β[idx, :]))
-    Vββ_eval, Vββ_evec = eigen(Symmetric(icm.Vββ))
-    for (i, e) in enumerate(Vββ_eval)
-        Vββ_eval[i] = e < 0 ? 0 : inv(e)
-    end
-    icm.Vββ .= Vββ_evec * Diagonal(Vββ_eval) * transpose(Vββ_evec)
+    icm.Vββ .= Hββ_evec * Diagonal(Hββ_eval) * transpose(Hββ_evec)
     icm.isfitted[1] = true
     icm
 end
@@ -259,11 +251,13 @@ end
 Translate model parameters in `icm` to optimization variables in `par`.
 """
 function modelpar_to_optimpar!(
-    par :: Vector,
+    par :: Vector{T},
     icm :: IntervalCensoredModel
-    )
+    ) where T <: AbstractFloat
     m, p = length(icm.ts), size(icm.Z, 2)
-    copyto!(par, icm.λ₀)
+    @inbounds for i in 1:m
+        par[i] = log(max(icm.λ₀[i], floatmin(T)))
+    end
     copyto!(par, m + 1, icm.β, 1, p)
     par
 end
@@ -278,9 +272,8 @@ function optimpar_to_modelpar!(
     par :: Vector
     )
     m, p = length(icm.ts), size(icm.Z, 2)
-    copyto!(icm.λ₀, 1, par, 1, m)
-    for (i, λi) in enumerate(icm.λ₀)
-        (icm.λ₀[i] < 0) && (icm.λ₀[i] = 0)
+    @inbounds for i in 1:m
+        icm.λ₀[i] = exp(par[i])
     end
     cumsum!(icm.Λ₀, icm.λ₀)
     copyto!(icm.β, 1, par, m + 1, p)
@@ -320,7 +313,10 @@ function MathProgBase.eval_grad_f(
     optimpar_to_modelpar!(icm, par) 
     loglikelihood!(icm, true)
     # gradient wrt λ₀
-    copyto!(grad, icm.∇λ₀)
+    # chain rule for unconstrained parameterization
+    @inbounds for i in 1:m
+        grad[i] = icm.∇λ₀[i] .* icm.λ₀[i] 
+    end
     # gradient wrt β
     copyto!(grad, m + 1, icm.∇β, 1, p)
     nothing
@@ -357,18 +353,22 @@ function MathProgBase.eval_hesslag(
     loglikelihood!(icm, true, true)
     # Hλ₀λ₀
     idx = 1
-    @inbounds for j in 1:m, i in 1:j
-        H[idx] = -icm.Hλ₀λ₀[i, j]
-        idx   += 1
+    @inbounds for j in 1:m
+        for i in 1:(j-1)
+            H[idx] = - icm.Hλ₀λ₀[i, j] * icm.λ₀[i] * icm.λ₀[j]
+            idx   += 1
+        end
+        H[idx] = (- icm.Hλ₀λ₀[j, j] * icm.λ₀[j] + icm.∇λ₀[j]) * icm.λ₀[j]
+        idx += 1
     end
     # Hλ₀β and Hββ
     @inbounds for j in 1:p
         for i in 1:m
-            H[idx] = -icm.Hλ₀β[i, j]
+            H[idx] = - icm.Hλ₀β[i, j] * icm.λ₀[i]
             idx   += 1
         end
         for i in 1:j
-            H[idx] = -icm.Hββ[i, j]
+            H[idx] = - icm.Hββ[i, j]
             idx   += 1
         end
     end
